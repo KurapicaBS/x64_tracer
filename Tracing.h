@@ -19,7 +19,7 @@
 #endif
 
 //Interval of each step
-#define TimerStepMs 20
+#define TimerStepMs 10
 
 //NT header size for 32 and 64 bit PE files
 #define NT32dataSize 0xF8 

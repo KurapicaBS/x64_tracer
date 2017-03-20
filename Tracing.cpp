@@ -460,6 +460,20 @@ VOID CALLBACK TimerProcStepOut(HWND hWnd, UINT nMsg, UINT nIDEvent, DWORD dwTime
 	DbgCmdExec("eStepOver");
 }
 
+VOID CALLBACK TimerProcRTR(HWND hWnd, UINT nMsg, UINT nIDEvent, DWORD dwTime) 
+{
+
+	KillTimer(hWnd, nIDEvent);
+
+	if(!LoggingActive)
+	{
+		return;
+	}
+
+	DbgCmdExec("StepOut");
+}
+
+
 void MyCallBack (CBTYPE cbType, void* callbackinfo)
 {
  
@@ -506,7 +520,7 @@ void MyCallBack (CBTYPE cbType, void* callbackinfo)
 			if(LoggingActive == true)
 			{
 				//compare current module with our target module ?
-				if ( iequals(string(module), TaregtModule) )
+				//if ( iequals(string(module), TaregtModule) )
 				{
 					//disassemble current line 
 					BASIC_INSTRUCTION_INFO basicinfo;
@@ -535,11 +549,11 @@ void MyCallBack (CBTYPE cbType, void* callbackinfo)
 						string Row;
 						if(basicinfo.call)
 						{
-							Row = Int64ToHexString(entry) + "\t\t" + Int32ToHexString( VAtoRVA(entry, ImageBase)) + "\t\t" + (IsFileOffsetPossible ? Int32ToHexString( VAtoFileOffset(entry, ImageBase)) : Int32ToHexString( 0)) + "\t\t" + "\t-->\t\t\t\t"  + string(basicinfo.instruction);
+							Row =  Int32ToHexString( VAtoRVA(entry, ImageBase)) + "\t\t" + (IsFileOffsetPossible ? Int32ToHexString( VAtoFileOffset(entry, ImageBase)) : Int32ToHexString( 0)) + "\t\t\t-->";//\t\t\t\t"  + string(basicinfo.instruction);
 						}
 						else
 						{
-							Row = Int64ToHexString(entry) + "\t\t" + Int32ToHexString( VAtoRVA(entry, ImageBase)) + "\t\t" + (IsFileOffsetPossible ? Int32ToHexString( VAtoFileOffset(entry, ImageBase)) : Int32ToHexString( 0)) + "\t\t" + (IsTaken ? "\tYes\t\t\t\t" : "\tNot\t\t\t\t") + string(basicinfo.instruction);
+							Row =  Int32ToHexString( VAtoRVA(entry, ImageBase)) + "\t\t" + (IsFileOffsetPossible ? Int32ToHexString( VAtoFileOffset(entry, ImageBase)) : Int32ToHexString( 0)) + "\t\t\t" + (IsTaken ? "Yes" : "Not");// + string(basicinfo.instruction);
 						}
 
 						Events.push_back(Row);
@@ -560,23 +574,35 @@ void MyCallBack (CBTYPE cbType, void* callbackinfo)
 				//internal jmp ?
 				if ( iequals(string(module), TaregtModule) )
 				{
-					//we are inside our target module so step into
-					UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcSingleStep);
 
-				}
-				else//
-				{
-
-					//we are outside the target module !
+					//we are inside our target
 					if(iequals(TaregtModule , DestModule))
 					{
-						//If the branch goes back to our target module then step into
+					//Is the JMP going into out target module ?
 						UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcSingleStep);
 					}
-					else
-					{	//If the jmp goes somewhere else then step over it
+					else//JMP is from target module to some external module so step over !
+					{
 						UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcStepOut);
 					}
+				}
+				else//Now we are outside the target module !
+				{
+
+					//Execute till return !
+					UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcRTR);
+
+					//we are outside the target module !
+					//if(iequals(TaregtModule , DestModule))
+					//{
+						//If the branch goes back to our target module then step into
+						//UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcSingleStep);
+						 
+					//}
+					//else
+					//{	//If the jmp goes somewhere else then step over it
+						//UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcStepOut);
+					//}
 
 					//After this the stepping event won't be fired
 					//we will face the PasuedDebug event there
@@ -605,17 +631,32 @@ void MyCallBack (CBTYPE cbType, void* callbackinfo)
 		{
 
 			//disassemble current line 
-			//BASIC_INSTRUCTION_INFO basicinfo;
-			//DbgDisasmFastAt(entry, &basicinfo);
+			BASIC_INSTRUCTION_INFO basicinfo;
+			DbgDisasmFastAt(entry, &basicinfo);
+
+			//Current module we are in !
+			char module[MAX_MODULE_SIZE] = "";
+			duint entry = GetContextData(UE_CIP);
 
 			//Are we at a "RET" instruction ?
-			//if( iequals( string(basicinfo.instruction) , "RET"))
-			//{
+			if( iequals( string(basicinfo.instruction) , "RET"))
+			{
+
+				if (DbgGetModuleAt(entry,module))
+				{
+					//If we are outside the target module then do a single step
+					//if (! iequals(string(module), TaregtModule) )
+					//{
+						UINT_PTR TimerId = SetTimer(hwndDlg, 0, TimerStepMs, (TIMERPROC)TimerProcSingleStep);
+					//}
+
+				}
+
 				//DO a single step !
 
 				//UINT_PTR TimerId = SetTimer(hwndDlg, 0, 10, (TIMERPROC)TimerProcSingleStep);
 
-			//}
+			}
 
 		}
 		break;
@@ -737,7 +778,7 @@ INT_PTR CALLBACK DialogProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							//print the header
 							string Row;
  
-							Row = "VA\t\t\t\tRVA\t\t\tOffset\t\t\tStatus\t\t\tInsturction";
+							Row = "RVA\t\t\tOffset\t\t\tStatus";
 
 							ofstream Outfile(szFileName);
 
